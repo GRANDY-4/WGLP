@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WGLP Studio</title>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{height:100vh;display:flex;flex-direction:column;background:#1e1e1e;color:white;font-family:Segoe UI;overflow:hidden;}
+
+#topbar{height:50px;background:#181818;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid #333;}
+#title{font-weight:700;}
+button{background:#0e639c;color:#fff;border:0;padding:7px 10px;border-radius:4px;cursor:pointer;}
+button:hover{background:#1177bb;}
+
+#main{flex:1;display:flex;overflow:hidden;}
+
+#explorer{width:260px;background:#252526;border-right:1px solid #333;display:flex;flex-direction:column;}
+#explorerHeader{padding:10px;font-size:12px;color:#ccc;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;}
+#explorerHeader span{display:flex;gap:4px;align-items:center;}
+
+.sectionLabel{padding:6px 10px;font-size:11px;text-transform:uppercase;color:#888;border-bottom:1px solid #333;background:#1f1f1f;}
+.file{padding:6px 10px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:6px;}
+.file:hover{background:#2d2d30;}
+.file.active{background:#37373d;}
+.fileIcon{font-size:11px;opacity:0.8;}
+
+#editorWrap{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  position:relative;
+}
+
+#tabBar{height:34px;background:#252526;display:flex;align-items:center;border-bottom:1px solid #333;padding-left:8px;}
+.tab{padding:6px 10px;background:#1e1e1e;border-right:1px solid #333;font-size:13px;}
+
+#editor{
+  position:absolute;
+  top:34px;
+  left:0;
+  right:0;
+  bottom:0;
+  padding:12px;
+  font-family:Consolas;
+  font-size:14px;
+  background:#1e1e1e;
+  color:white;
+  border:none;
+  outline:none;
+  resize:none;
+  overflow:auto;
+  white-space:pre;
+}
+
+#preview{width:360px;background:#fff;color:#000;overflow:auto;padding:12px;}
+
+#console{height:120px;background:#111;border-top:1px solid #333;overflow:auto;font-family:Consolas;padding:8px;font-size:12px;}
+
+.previewText{margin:6px 0;}
+
+img{max-width:100%;margin:6px 0;}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="title">WGLP Studio</div>
+  <div style="display:flex; gap:10px;">
+    <button onclick="window.open('https://www.mediafire.com/file/8ecq2d430ndv62i/WGLP_Chrome_Extensionv1-1.zip/file', '_blank')">
+      WGLP Extension
+    </button>
+    <button onclick="run()">Run</button>
+  </div>
+</div>
+
+<div id="main">
+
+  <div id="explorer">
+    <div id="explorerHeader">
+      <span>Explorer</span>
+      <span>
+        <button onclick="addFile()">+</button>
+        <input type="file" id="fileUpload" multiple accept="image/*" style="display:none" onchange="uploadFiles(event)">
+        <button onclick="document.getElementById('fileUpload').click()">Upload</button>
+      </span>
+    </div>
+    <div id="fileList"></div>
+  </div>
+
+  <div id="editorWrap">
+    <div id="tabBar"><div class="tab" id="tabName">main.wglp</div></div>
+
+    <textarea id="editor"></textarea>
+  </div>
+
+  <div id="preview"></div>
+
+</div>
+
+<div id="console"></div>
+
+<script>
+
+let projectFiles = {
+  "main.wglp": `version 1.0
+
+$google_fonts(Roboto, Open Sans)
+
+page.title("My Site")
+
+background.color(white)
+
+page.text("Hello World", 3, red, Roboto)
+
+page.img("https://picsum.photos/200")`
+};
+
+let assets = {};
+let activeFile = "main.wglp";
+
+const editor = document.getElementById("editor");
+const fileList = document.getElementById("fileList");
+const preview = document.getElementById("preview");
+const consoleBox = document.getElementById("console");
+const tabName = document.getElementById("tabName");
+
+function log(msg){
+  consoleBox.innerHTML += "<div>"+msg+"</div>";
+  consoleBox.scrollTop = consoleBox.scrollHeight;
+}
+
+function renderFiles(){
+  fileList.innerHTML = "";
+
+  const filesLabel = document.createElement("div");
+  filesLabel.className = "sectionLabel";
+  filesLabel.textContent = "Files";
+  fileList.appendChild(filesLabel);
+
+  for(let f in projectFiles){
+    let div = document.createElement("div");
+    div.className = "file"+(f===activeFile?" active":"");
+    div.innerHTML = `<span class="fileIcon">📄</span> <span>${f}</span>`;
+    div.onclick = ()=>switchFile(f);
+    fileList.appendChild(div);
+  }
+
+  const assetKeys = Object.keys(assets);
+  if(assetKeys.length > 0){
+    const assetsLabel = document.createElement("div");
+    assetsLabel.className = "sectionLabel";
+    assetsLabel.textContent = "Assets";
+    fileList.appendChild(assetsLabel);
+
+    for(let a of assetKeys){
+      let div = document.createElement("div");
+      div.className = "file";
+      div.innerHTML = `<span class="fileIcon">🖼️</span> <span>${a}</span>`;
+      fileList.appendChild(div);
+    }
+  }
+}
+
+function switchFile(f){
+  projectFiles[activeFile] = editor.value;
+  activeFile = f;
+  editor.value = projectFiles[f];
+  tabName.textContent = f;
+  renderFiles();
+  update();
+}
+
+function addFile(){
+  let name = prompt("File name (.wglp):");
+  if(!name) return;
+  if(!name.endsWith(".wglp")) name += ".wglp";
+  if(projectFiles[name]){
+    alert("File already exists.");
+    return;
+  }
+  projectFiles[name] = "version 1.0\n";
+  switchFile(name);
+}
+
+function uploadFiles(e){
+  for(let file of e.target.files){
+    let reader = new FileReader();
+    reader.onload = ()=>{
+      assets[file.name] = reader.result;
+      log("Uploaded: "+file.name);
+      renderFiles();
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+//
+// SMART EDITOR FEATURES
+//
+
+editor.addEventListener("keydown", (e)=>{
+
+  // TAB → insert 4 spaces
+  if(e.key === "Tab"){
+    e.preventDefault();
+    let start = editor.selectionStart;
+    editor.value =
+      editor.value.substring(0, start) +
+      "    " +
+      editor.value.substring(editor.selectionEnd);
+    editor.selectionStart = editor.selectionEnd = start + 4;
+    return;
+  }
+
+  // ENTER → auto-indent + smart bracket newline
+  if(e.key === "Enter"){
+    e.preventDefault();
+
+    let start = editor.selectionStart;
+    let before = editor.value.substring(0, start);
+    let after = editor.value.substring(editor.selectionEnd);
+
+    let indentMatch = before.match(/(^|\n)([ \t]*)[^\n]*$/);
+    let indent = indentMatch ? indentMatch[2] : "";
+
+    if(before.endsWith("(") && after.startsWith(")")){
+      editor.value = before + "\n" + indent + "    \n" + indent + after;
+      editor.selectionStart = editor.selectionEnd = start + 1 + indent.length + 4;
+      return;
+    }
+    if(before.endsWith("[") && after.startsWith("]")){
+      editor.value = before + "\n" + indent + "    \n" + indent + after;
+      editor.selectionStart = editor.selectionEnd = start + 1 + indent.length + 4;
+      return;
+    }
+    if(before.endsWith("{") && after.startsWith("}")){
+      editor.value = before + "\n" + indent + "    \n" + indent + after;
+      editor.selectionStart = editor.selectionEnd = start + 1 + indent.length + 4;
+      return;
+    }
+
+    editor.value = before + "\n" + indent + after;
+    editor.selectionStart = editor.selectionEnd = start + 1 + indent.length;
+    return;
+  }
+
+  const openers = {
+    "(" : ")",
+    "[" : "]",
+    "{" : "}",
+    '"' : '"',
+    "'" : "'"
+  };
+
+  const closers = [")", "]", "}", '"', "'"];
+
+  // Smart closers: if next char is same, skip over it
+  if(closers.includes(e.key)){
+    let start = editor.selectionStart;
+    let next = editor.value.substring(start, start+1);
+    if(next === e.key){
+      e.preventDefault();
+      editor.selectionStart = editor.selectionEnd = start + 1;
+    }
+    return;
+  }
+
+  // Auto-close only opening characters
+  if(openers[e.key]){
+    e.preventDefault();
+    let start = editor.selectionStart;
+    let end = editor.selectionEnd;
+    let before = editor.value.substring(0, start);
+    let after = editor.value.substring(end);
+
+    editor.value = before + e.key + openers[e.key] + after;
+    editor.selectionStart = editor.selectionEnd = start + 1;
+    return;
+  }
+
+});
+
+//
+// GOOGLE FONTS IMPORT
+//
+
+function applyGoogleFonts(code){
+  let match = code.match(/\$google_fonts\(([^)]+)\)/);
+  if(!match) return;
+
+  let raw = match[1];
+  let fonts = raw.split(",").map(f => f.trim()).filter(f => f.length > 0);
+  if(fonts.length === 0) return;
+
+  let families = fonts.map(f => "family=" + f.replace(/ /g, "+")).join("&");
+  let href = "https://fonts.googleapis.com/css2?" + families + "&display=swap";
+
+  let existing = document.getElementById("googleFontsLink");
+  if(existing){
+    existing.href = href;
+  } else {
+    let link = document.createElement("link");
+    link.id = "googleFontsLink";
+    link.rel = "stylesheet";
+    link.href = href;
+    document.head.appendChild(link);
+  }
+}
+
+//
+// PREVIEW ENGINE
+//
+
+function parseColor(c){
+  c = c.trim().toLowerCase();
+
+  if(
+    c.startsWith("rgb(") ||
+    c.startsWith("rgba(") ||
+    c.startsWith("hsl(") ||
+    c.startsWith("hsla(") ||
+    c.startsWith("#")
+  ){
+    return c;
+  }
+
+  const map = {
+    red:"rgb(255,0,0)",
+    blue:"rgb(0,0,255)",
+    green:"rgb(0,255,0)",
+    white:"#fff",
+    black:"#000",
+    yellow:"rgb(255,255,0)"
+  };
+  return map[c] || c;
+}
+
+function getVersion(code){
+  let v = code.match(/version\s+([0-9.]+)/);
+  if(!v) return "1.0";
+  return v[1].trim();
+}
+
+function update(){
+
+  preview.innerHTML = "";
+  let code = editor.value;
+
+  applyGoogleFonts(code);
+
+  let version = getVersion(code);
+
+  let title = code.match(/page\.title\("([^"]+)"\)/);
+  if(title) document.title = title[1];
+
+  let bg = code.match(/background\.color\((.*?)\)/);
+  if(bg){
+    let raw = bg[1].trim().replace(/['"]/g, "");
+    preview.style.background = parseColor(raw);
+  }
+
+  let textRegex = /page\.text\("([^"]+)"\s*,\s*([1-5])(?:\s*,\s*([^,)\s]+))?(?:\s*,\s*([^,)\s]+))?\)/g;
+  let m;
+  while(m = textRegex.exec(code)){
+    let div = document.createElement("div");
+    div.className = "previewText";
+
+    let sizes=[14,18,24,32,42];
+    div.style.fontSize = sizes[m[2]-1]+"px";
+
+    if(m[3]){
+      div.style.color = parseColor(m[3]);
+    }
+
+    if(m[4]){
+      div.style.fontFamily = m[4];
+    }
+
+    div.textContent = m[1];
+    preview.appendChild(div);
+  }
+
+  if(version === "1.0"){
+
+    let imgNewCheck = /page\.img\("([^"]+)"\s*,\s*([0-9]+)\s*,\s*([0-9]+)\)/;
+    if(imgNewCheck.test(code)){
+      log("❌ ERROR: page.img(url, w, h) is a version 1.1 feature. Update file to version 1.1 to use it.");
+      return;
+    }
+
+    let imgOld = /page\.img\("([^"]+)"\)/g;
+    while(m = imgOld.exec(code)){
+      let src = m[1];
+      if(assets[src]) src = assets[src];
+      let img = document.createElement("img");
+      img.src = src;
+      preview.appendChild(img);
+    }
+
+  } else if(version === "1.1"){
+
+    let imgNew = /page\.img\("([^"]+)"\s*,\s*([0-9]+)\s*,\s*([0-9]+)\)/g;
+    while(m = imgNew.exec(code)){
+      let src = m[1];
+      if(assets[src]) src = assets[src];
+      let img = document.createElement("img");
+      img.src = src;
+      img.style.width = m[2] + "px";
+      img.style.height = m[3] + "px";
+      preview.appendChild(img);
+    }
+
+    let imgOld = /page\.img\("([^"]+)"\)/g;
+    while(m = imgOld.exec(code)){
+      let src = m[1];
+      if(assets[src]) src = assets[src];
+      let img = document.createElement("img");
+      img.src = src;
+      preview.appendChild(img);
+    }
+  }
+}
+
+function run(){
+  consoleBox.innerHTML = "";
+  log("Running WGLP...");
+  projectFiles[activeFile] = editor.value;
+  update();
+  log("Done.");
+}
+
+editor.addEventListener("input", () => {
+  projectFiles[activeFile] = editor.value;
+  update();
+});
+
+editor.value = projectFiles[activeFile];
+renderFiles();
+update();
+
+</script>
+
+</body>
+</html>
